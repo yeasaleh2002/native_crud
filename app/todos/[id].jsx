@@ -1,103 +1,60 @@
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { View, Text, StyleSheet, Pressable, TextInput } from "react-native";
+import { useState, useEffect, useContext } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useState, useContext, useEffect } from "react";
-import { data } from "../data/todos";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { ThemeContext } from "@/context/ThemeContext";
-import Octicons from "@expo/vector-icons/Octicons";
-import Animated, { LinearTransition } from "react-native-reanimated";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
+import Octicons from "@expo/vector-icons/Octicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 
-export default function Index() {
-  const [todos, setTodos] = useState([]);
-  const [text, setText] = useState("");
+export default function editScreen() {
+  const { id } = useLocalSearchParams();
+  const [todo, setTodo] = useState({});
   const { colorScheme, setColorScheme, theme } = useContext(ThemeContext);
   const styles = createStyles(theme, colorScheme);
   const router = useRouter();
 
-  const addTodo = () => {
-    if (text?.trim()) {
-      const newId = todos.length > 0 ? todos[0].id + 1 : 1;
-      setTodos([{ id: newId, title: text, completed: false }, ...todos]);
-      setText("");
-    }
-  };
-
-  const handlePress = (id) => {
-    router.push(`/todos/${id}`)
-  };
-
-  const toggleTodo = (id) => {
-    setTodos(
-      todos.map((todo) =>
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      )
-    );
-  };
-
-  const removeTodo = (id) => {
-    setTodos(todos.filter((todo) => todo.id !== id));
-  };
-
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchData = async (id) => {
       try {
         const jsonValue = await AsyncStorage.getItem("TodoApp");
         const storageTodos = jsonValue !== null ? JSON.parse(jsonValue) : null;
 
         if (storageTodos && storageTodos.length) {
-          setTodos(storageTodos.sort((a, b) => b.id - a.id));
-        } else {
-          setTodos(data.sort((a, b) => b.id - a.id));
+          const myTodo = storageTodos.find((todo) => todo.id.toString() === id);
+          setTodo(myTodo);
         }
       } catch (e) {
         console.error(e);
       }
     };
-    fetchData();
-  }, [data]);
 
-  useEffect(() => {
-    const storeData = async () => {
-      try {
-        const jsonValue = JSON.stringify(todos);
-        await AsyncStorage.setItem("TodoApp", jsonValue);
-      } catch (e) {
-        console.error(e);
+    fetchData(id);
+  }, [id]);
+
+  const handleSave = async () => {
+    try {
+      const savedTodo = { ...todo, title: todo.title };
+
+      const jsonValue = await AsyncStorage.getItem("TodoApp");
+      const storageTodos = jsonValue !== null ? JSON.parse(jsonValue) : null;
+
+      if (storageTodos && storageTodos.length) {
+        const otherTodos = storageTodos.filter(
+          (todo) => todo.id !== savedTodo.id
+        );
+        const allTodos = [...otherTodos, savedTodo];
+        await AsyncStorage.setItem("TodoApp", JSON.stringify(allTodos));
+      } else {
+        await AsyncStorage.setItem("TodoApp", JSON.stringify([savedTodo]));
       }
-    };
-    storeData();
-  }, [todos]);
 
-  const renderItem = ({ item }) => (
-    <View style={styles.todoItem}>
-      <Pressable
-        onPress={() => handlePress(item.id)}
-        onLongPress={() => toggleTodo(item.id)}
-      >
-        <Text style={[styles.todoText, item.completed && styles.completedText]}>
-          {item.title}
-        </Text>
-      </Pressable>
-      <Pressable onPress={() => removeTodo(item.id)}>
-        <MaterialCommunityIcons
-          name="delete-circle"
-          size={36}
-          color="red"
-          selectable={undefined}
-        />
-      </Pressable>
-    </View>
-  );
+      router.push("/");
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -105,14 +62,11 @@ export default function Index() {
         <TextInput
           style={styles.input}
           maxLength={30}
-          placeholder="Add a new todo"
+          placeholder="Edit Todo"
           placeholderTextColor="gray"
-          value={text}
-          onChangeText={setText}
+          value={todo.title || ""}
+          onChangeText={(text) => setTodo((prev) => ({ ...prev, title: text }))}
         />
-        <Pressable onPress={addTodo} style={styles.addButton}>
-          <Text style={styles.addButtonText}>Add</Text>
-        </Pressable>
         <Pressable
           onPress={() =>
             setColorScheme(colorScheme === "light" ? "dark" : "light")
@@ -138,14 +92,19 @@ export default function Index() {
           )}
         </Pressable>
       </View>
-      <Animated.FlatList
-        data={todos}
-        renderItem={renderItem}
-        keyExtractor={(todo) => todo.id}
-        contentContainerStyle={{ flexGrow: 1 }}
-        itemLayoutAnimation={LinearTransition}
-        keyboardDismissMode="on-drag"
-      ></Animated.FlatList>
+      <View style={styles.inputContainer}>
+        <Pressable onPress={handleSave} style={styles.saveButton}>
+          <Text style={styles.saveButtonText}>Save</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push("/")}
+          style={[styles.saveButton, { backgroundColor: "red" }]}
+        >
+          <Text style={[styles.saveButtonText, { color: "white" }]}>
+            Cancel
+          </Text>
+        </Pressable>
+      </View>
       <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
     </SafeAreaView>
   );
@@ -155,7 +114,7 @@ function createStyles(theme, colorScheme) {
   return StyleSheet.create({
     container: {
       flex: 1,
-      // width: "100%",
+      width: "100%",
       backgroundColor: theme.background,
     },
     inputContainer: {
@@ -209,6 +168,16 @@ function createStyles(theme, colorScheme) {
     completedText: {
       textDecorationLine: "line-through",
       color: "gray",
+    },
+    saveButton: {
+      padding: 10,
+      backgroundColor: theme.button,
+      borderRadius: 5,
+      marginRight: 10
+    },
+    saveButtonText: {
+      fontSize: 18,
+      color: colorScheme === "dark" ? "black" : "white",
     },
   });
 }
